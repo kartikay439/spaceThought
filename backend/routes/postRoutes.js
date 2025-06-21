@@ -31,7 +31,7 @@ router.post("/create", authMiddleware, async (req, res) => {
 
 
 
-router.post("/upload", upload.single("thoughtMedia"), async (req, res) => {
+router.post("/upload",requestMiddleware ,upload.single("thoughtMedia"), async (req, res) => {
     try {
         console.log("🔹 Received Headers:", req.headers);
         console.log("🔹 Received Body:", req.body);
@@ -58,10 +58,13 @@ router.post("/upload", upload.single("thoughtMedia"), async (req, res) => {
         if (!req.body.thought) {
             return res.status(400).json({ message: "❌ Thought text is required" });
         }
+        console.log("iddddddddddddddddddddddddddddddddd"+req.id)
+
 
         const post = await Post.create({
             thought: req.body.thought,
             thoughtMedia: [thoughtMediaOnCloudinaryUrl],
+            userID:req.id
         });
 
         return res.status(201).json({
@@ -76,20 +79,49 @@ router.post("/upload", upload.single("thoughtMedia"), async (req, res) => {
 
 
 
-// 🔹 Get All Posts
-router.get("/all",
-    requestMiddleware
-    ,async (req, res) => {
-    try {
-        const posts = await Post.find({
-
-
-        });
-        res.status(203).json(posts);
-    } catch (err) {
-        console.error("Error fetching posts:", err);
-        res.status(500)
+router.get("/all", requestMiddleware, async (req, res) => {
+  try {
+    const posts = await Post.aggregate([
+  // ✅ Step 0: Match only posts with a valid userID format (24-char hex strings)
+  {
+    $match: {
+      userID: { $type: "string", $regex: /^[a-f\d]{24}$/i }
     }
+  },
+  // ✅ Step 1: Convert userID to ObjectId
+  {
+    $addFields: {
+      userObjId: { $toObjectId: "$userID" }
+    }
+  },
+  // ✅ Step 2: Lookup user info
+  {
+    $lookup: {
+      from: "users",
+      localField: "userObjId",
+      foreignField: "_id",
+      as: "userInfo"
+    }
+  },
+  // ✅ Step 3: Unwind and project
+  { $unwind: "$userInfo" },
+  {
+    $project: {
+      _id: 1,
+      thought: 1,
+      thoughtMedia: 1,
+      username: "$userInfo.name"
+    }
+  }
+]);
+
+console.log(posts)
+    res.status(200).json(posts);
+  } catch (err) {
+    console.error("Aggregation error:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
 });
+
 
 export default router;

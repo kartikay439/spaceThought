@@ -25,6 +25,7 @@ router.put("/profile", authMiddleware, async (req, res) => {
     }
 });
 
+
 // 🔹 Delete User Profile
 router.delete("/profile", authMiddleware, async (req, res) => {
     try {
