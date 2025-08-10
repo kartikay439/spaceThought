@@ -4,7 +4,18 @@ import cors from "cors";
 import connectDB from "./config/db.js";
 import authRoutes from "./routes/authRoutes.js";
 import postRoutes from "./routes/postRoutes.js";
+import rateLimit from "express-rate-limit";
 
+
+const userLimiter = rateLimit(
+   {
+      windowMs:5000,
+      max:1,
+      message:"Too many request",
+      standardHeaders:true,
+      legacyHeaders:false
+   }
+)
 
 
 dotenv.config();
@@ -13,6 +24,9 @@ app.use(express.json());
 app.use(cors());
 
 connectDB();
+
+// app.use(userLimiter);
+
 
 app.use("/api/auth", authRoutes);
 app.post("/", (req, res) => {

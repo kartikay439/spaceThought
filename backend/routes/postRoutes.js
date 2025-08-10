@@ -4,6 +4,7 @@ import { upload } from "../middleware/uploadMiddleware.js";
 import Post from "../models/Post.js";
 import { uploadOnCloudinary } from "../utility/cloudinary.js";
 import {requestMiddleware} from "../middleware/requestMiddleware.js";
+import { ObjectId } from 'mongodb';
 
 const router = express.Router();
 
@@ -78,50 +79,60 @@ router.post("/upload",requestMiddleware ,upload.single("thoughtMedia"), async (r
 });
 
 
-
 router.get("/all", requestMiddleware, async (req, res) => {
   try {
-    const posts = await Post.aggregate([
-  // ✅ Step 0: Match only posts with a valid userID format (24-char hex strings)
-  {
-    $match: {
-      userID: { $type: "string", $regex: /^[a-f\d]{24}$/i }
-    }
-  },
-  // ✅ Step 1: Convert userID to ObjectId
-  {
-    $addFields: {
-      userObjId: { $toObjectId: "$userID" }
-    }
-  },
-  // ✅ Step 2: Lookup user info
-  {
-    $lookup: {
-      from: "users",
-      localField: "userObjId",
-      foreignField: "_id",
-      as: "userInfo"
-    }
-  },
-  // ✅ Step 3: Unwind and project
-  { $unwind: "$userInfo" },
-  {
-    $project: {
-      _id: 1,
-      thought: 1,
-      thoughtMedia: 1,
-      username: "$userInfo.name"
-    }
-  }
-]);
+    console.log("🔹 Received Query:", req.query); // ✅ logs correctly
 
-console.log(posts)
-    res.status(200).json(posts);
+    const { cursor, limit = 2 } = req.query;
+    const parsedLimit = parseInt(limit);
+
+    const matchStage = {
+      userID: { $type: "string", $regex: /^[a-f\d]{24}$/i }
+    };
+
+    if (cursor) {
+      matchStage._id = { $lt: new ObjectId(cursor) };
+    }
+
+    const posts = await Post.aggregate([
+      { $match: matchStage },
+      { $addFields: { userObjId: { $toObjectId: "$userID" } } },
+      {
+        $lookup: {
+          from: "users",
+          localField: "userObjId",
+          foreignField: "_id",
+          as: "userInfo"
+        }
+      },
+      { $unwind: "$userInfo" },
+      {
+        $project: {
+          _id: 1,
+          thought: 1,
+          thoughtMedia: 1,
+          username: "$userInfo.name"
+        }
+      },
+      { $sort: { _id: -1 } },
+      { $limit: parsedLimit }
+    ]);
+
+    const nextCursor = posts.length > 0 ? posts[posts.length - 1]._id : null;
+
+    console.log("Posts:", posts);
+
+    res.status(200).json({
+      posts,
+      nextCursor
+    });
   } catch (err) {
     console.error("Aggregation error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
+
 
 
 export default router;
