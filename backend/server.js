@@ -40,4 +40,4 @@ app.use("/api/post", postRoutes);
 
 
 const PORT = 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(process.env.PORT||PORT, () => console.log(`🚀 Server running on port ${PORT}`));
