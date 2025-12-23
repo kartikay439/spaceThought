@@ -5,6 +5,7 @@ import Post from "../models/Post.js";
 import { uploadOnCloudinary } from "../utility/cloudinary.js";
 import {requestMiddleware} from "../middleware/requestMiddleware.js";
 import { ObjectId } from 'mongodb';
+import ApiResponse from "../utility/ApiResponse.js";
 
 const router = express.Router();
 
@@ -50,14 +51,14 @@ router.post("/upload",requestMiddleware ,upload.single("thoughtMedia"), async (r
         const thoughtMediaOnCloudinary = await uploadOnCloudinary(thoughtMediaPath);
 
         if (!thoughtMediaOnCloudinary || !thoughtMediaOnCloudinary.url) {
-            return res.status(500).json({ message: "❌ Cloudinary upload failed" });
+            return res.status(500).json(new ApiResponse(500, "❌ Cloudinary upload failed",{}));
         }
 
         const thoughtMediaOnCloudinaryUrl = thoughtMediaOnCloudinary.url;
         console.log("✅ Cloudinary URL:", thoughtMediaOnCloudinaryUrl);
 
         if (!req.body.thought) {
-            return res.status(400).json({ message: "❌ Thought text is required" });
+            return res.status(400).json(new ApiResponse);
         }
         console.log("iddddddddddddddddddddddddddddddddd"+req.id)
 
@@ -68,35 +69,41 @@ router.post("/upload",requestMiddleware ,upload.single("thoughtMedia"), async (r
             userID:req.id
         });
 
-        return res.status(201).json({
-            message: "✅ Post successfully uploaded",
-            post,
-        });
+        return res.status(201).json(new ApiResponse(201, "✅ Post created successfully", {}));
     } catch (error) {
         console.error("❌ Upload Error:", error);
-        res.status(500).json({ message: "Server error", error: error.message });
+        res.status(500).json(new ApiResponse(500,"Backend Error",{}));
     }
 });
 
 
-router.get("/all", requestMiddleware, async (req, res) => {
+
+router.get("/all", async (req, res) => {
   try {
-    console.log("🔹 Received Query:", req.query); // ✅ logs correctly
+    const { cursor, limit = 10 } = req.query;
+    const parsedLimit = parseInt(limit, 10);
 
-    const { cursor, limit = 2 } = req.query;
-    const parsedLimit = parseInt(limit);
+    console.log("🔹 Query:", req.query);
 
-    const matchStage = {
-      userID: { $type: "string", $regex: /^[a-f\d]{24}$/i }
-    };
+    // ✅ NO user filter → fetch all posts
+    const matchStage = {};
 
+    // Cursor pagination
     if (cursor) {
       matchStage._id = { $lt: new ObjectId(cursor) };
     }
 
     const posts = await Post.aggregate([
       { $match: matchStage },
-      { $addFields: { userObjId: { $toObjectId: "$userID" } } },
+
+      // convert string userID → ObjectId
+      {
+        $addFields: {
+          userObjId: { $toObjectId: "$userID" }
+        }
+      },
+
+      // join users collection
       {
         $lookup: {
           from: "users",
@@ -105,7 +112,11 @@ router.get("/all", requestMiddleware, async (req, res) => {
           as: "userInfo"
         }
       },
+
+      // flatten
       { $unwind: "$userInfo" },
+
+      // project required fields
       {
         $project: {
           _id: 1,
@@ -114,25 +125,35 @@ router.get("/all", requestMiddleware, async (req, res) => {
           username: "$userInfo.name"
         }
       },
+
+      // newest first
       { $sort: { _id: -1 } },
-      { $limit: parsedLimit }
+
+      // pagination (+1 trick)
+      { $limit: parsedLimit + 1 }
     ]);
 
-    const nextCursor = posts.length > 0 ? posts[posts.length - 1]._id : null;
+    // cursor logic
+    const hasNext = posts.length > parsedLimit;
+    if (hasNext) posts.pop();
 
-    console.log("Posts:", posts);
+    const nextCursor = hasNext
+      ? posts[posts.length - 1]._id
+      : null;
 
     res.status(200).json({
       posts,
       nextCursor
     });
+
   } catch (err) {
-    console.error("Aggregation error:", err);
+    console.error("❌ Aggregation error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
 
-
-
-
 export default router;
+
+
+
+

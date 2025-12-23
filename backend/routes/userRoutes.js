@@ -1,6 +1,7 @@
 import express from "express";
 import authMiddleware from "../middleware/authMiddleware.js";
 import User from "../models/User.js";
+import ApiResponse from "../utility/ApiResponse.js";
 
 const router = express.Router();
 
@@ -8,9 +9,15 @@ const router = express.Router();
 router.get("/profile", authMiddleware, async (req, res) => {
     try {
         const user = await User.findById(req.user.id).select("-password");
-        res.json(user);
+        let data = {
+            name: user.name,
+            email: user.email,
+        }
+        console.log("user id",req.user.id,data);
+        res.status(200).json(new ApiResponse(200,"User profile fetched successfully", data));
     } catch (err) {
-        res.status(500).json({ message: "Server error" });
+        console.log("Error fetching user profile:", err);
+        res.status(500).json(new ApiResponse(200,"Server error", null));
     }
 });
 
